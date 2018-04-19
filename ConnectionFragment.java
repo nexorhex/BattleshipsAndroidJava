@@ -1,8 +1,10 @@
 package com.example.szymi44.bluetoothapp;
 
 
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Fragment;
+import android.app.FragmentManager;
 import android.app.FragmentTransaction;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -13,6 +15,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -34,8 +38,10 @@ public class ConnectionFragment extends Fragment implements View.OnClickListener
     private static final String TAG = "ConnectionFragment";
     public MainActivity mainActivity;
     BluetoothAdapter mBluetoothAdapter;
-    BluetoothConnectionService mBluetoothConnection;
+    private static BluetoothConnectionService mBluetoothConnection;
     BluetoothDevice mBluetoothDevice;
+    FragmentManager fragmentManager;
+    BattleshipsFragment battleshipsFragment;
 
     Button btnDevice;
     Button btnSend;
@@ -120,13 +126,127 @@ public class ConnectionFragment extends Fragment implements View.OnClickListener
         }
     }
 
+    @Override
+    public void onStart() {
+        super.onStart();
+
+        if (mBluetoothConnection == null) {
+            mBluetoothConnection = new BluetoothConnectionService(getActivity(), handler);
+        }
+
+        //showDevices();
+    }
+
+    private final Handler handler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            Activity activity = getActivity();
+
+            switch (msg.what) {
+
+                case Constant.MESSAGE_DEVICE_NAME:
+                    if (null != activity) {
+                        Toast.makeText(activity, "Connected to", Toast.LENGTH_LONG).show();
+                    }
+                    break;
+                case Constant.MESSAGE_READ:
+                    byte[] readBuf = (byte[]) msg.obj;
+                    String readMessage = new String(readBuf, 0, msg.arg1);
+                    chat.setText("Starting the game!");
+                    if (readMessage.equals("chosingDialogQuery")) {
+                        AlertDialog dialog = createDialog();
+                        dialog.show();
+                    } else if (readMessage.equals("Player 1 wants to start!")) {
+                        AlertDialog dialog = createDialog2();
+                        dialog.show();
+                    } else if (readMessage.equals("Player 1 is a chicken!")) {
+                        AlertDialog dialog = createDialog3();
+                        dialog.show();
+                    }
+                    break;
+            }
+
+        }
+    };
+
+    public AlertDialog createDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+        builder.setMessage("Do you want to start?").setTitle("The 2 player is ready!");
+        builder.setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int i) {
+                sendMessage("Player 1 wants to start!");
+
+                fragmentManager = getActivity().getFragmentManager();
+                FragmentTransaction ft = fragmentManager.beginTransaction();
+                battleshipsFragment = new BattleshipsFragment();
+                ft.replace(R.id.frag_container, battleshipsFragment.newInstance("X"));
+                ft.addToBackStack(null);
+                ft.setTransition(FragmentTransaction.TRANSIT_FRAGMENT_FADE);
+                ft.commit();
+                Toast.makeText(getActivity(), "Player 1 starting the game", Toast.LENGTH_LONG).show();
+            }
+        });
+        builder.setNegativeButton("No", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialogInterface, int i) {
+                sendMessage("Player 1 is a chicken!");
+                Toast.makeText(getActivity(), "Convince him to play!", Toast.LENGTH_LONG).show();
+            }
+        });
+        return builder.create();
+    }
+
+    public AlertDialog createDialog2() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+        builder.setMessage("Still do you want to play?").setTitle("Player 1 ready to play");
+        builder.setPositiveButton("Agree", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialogInterface, int i) {
+                fragmentManager = getActivity().getFragmentManager();
+                FragmentTransaction ft = fragmentManager.beginTransaction();
+                battleshipsFragment = new BattleshipsFragment();
+                ft.replace(R.id.frag_container, battleshipsFragment.newInstance("O"));
+                ft.addToBackStack(null);
+                ft.setTransition(FragmentTransaction.TRANSIT_FRAGMENT_FADE);
+                ft.commit();
+                Toast.makeText(getActivity(), "Let's start the game!", Toast.LENGTH_LONG).show();
+            }
+        });
+        builder.setNegativeButton("No way!", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialogInterface, int i) {
+                Toast.makeText(getActivity(), "He is cheaky beaky!", Toast.LENGTH_LONG).show();
+            }
+        });
+        return builder.create();
+    }
+
+    public AlertDialog createDialog3() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+        builder.setMessage("Disgusting!").setTitle("Player 1 doesn't want to play");
+        builder.setNeutralButton("Ok :(", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialogInterface, int i) {
+                Toast.makeText(getActivity(), "He is a coward!", Toast.LENGTH_LONG).show();
+            }
+        });
+        return builder.create();
+    }
+
+    public void sendMessage(String msg) {
+        mBluetoothConnection.write(msg.getBytes());
+    }
+
     public void onClickButtonStartGame(View view) {
         BattleshipsFragment battleshipsFragment = new BattleshipsFragment();
-        FragmentTransaction ft = getFragmentManager().beginTransaction();
+        String text = "chosingDialogQuery";
+        sendMessage(text);
+        /*FragmentTransaction ft = getFragmentManager().beginTransaction();
         ft.replace(R.id.frag_container, battleshipsFragment);
         ft.addToBackStack(null);
         ft.setTransition(FragmentTransaction.TRANSIT_FRAGMENT_FADE);
-        ft.commit();
+        ft.commit();*/
     }
 
     public void onClickDiscover(View view) {
@@ -182,7 +302,7 @@ public class ConnectionFragment extends Fragment implements View.OnClickListener
             });
             AlertDialog alert = builder.create();
             alert.show();
-            mBluetoothConnection = new BluetoothConnectionService(mainActivity);
+            // mBluetoothConnection = new BluetoothConnectionService(mainActivity,handler);
         }
     }
 
@@ -233,7 +353,7 @@ public class ConnectionFragment extends Fragment implements View.OnClickListener
         }
     };
 
-        BroadcastReceiver messageReciever = new BroadcastReceiver() {
+    BroadcastReceiver messageReciever = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             String text = intent.getStringExtra("TheMessage");
@@ -242,8 +362,8 @@ public class ConnectionFragment extends Fragment implements View.OnClickListener
             chat.setText(messages);
 
         }
-};
-       BroadcastReceiver internalReciver = new BroadcastReceiver() {
+    };
+    BroadcastReceiver internalReciver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             String text = intent.getStringExtra("Connect");
@@ -253,12 +373,15 @@ public class ConnectionFragment extends Fragment implements View.OnClickListener
         }
     };
 
-
     public void onDestroy() {
         super.onDestroy();
         getActivity().unregisterReceiver(mReciver2);
         getActivity().unregisterReceiver(mReceiver);
         getActivity().unregisterReceiver(messageReciever);
         getActivity().unregisterReceiver(internalReciver);
+    }
+
+    static public BluetoothConnectionService getBluetoothService() {
+        return mBluetoothConnection;
     }
 }
